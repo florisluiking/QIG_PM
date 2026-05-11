@@ -1,0 +1,7 @@
+cache_simple/
+artifacts/
+*.joblib
+*.csv
+__pycache__/
+*.pyc
+.venv/
