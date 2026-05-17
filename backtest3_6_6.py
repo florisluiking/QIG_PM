@@ -47,12 +47,12 @@ MODEL_FEATURE_BLOCK = {
 # Individual threshold grids; all combinations are evaluated.
 # Classification models use predict_proba thresholds, prediction models use predicted-return thresholds.
 MODEL_THRESHOLD_GRIDS = {
-    "monthly": [0.53], 
-    "weekly": [0.53],   
-    "daily": [0.53],
-    "monthly_p": [-20],
-    "weekly_p": [-20],
-    "daily_p": [-20],
+    "monthly": [0.535],    # Manually set to 0.55
+    "weekly": [0.535],     # Manually set to 0.52
+    "daily": [0.535],
+    "monthly_p": [-0.002],
+    "weekly_p": [-0.002],
+    "daily_p": [-0.002],
 }
 
 CLASSIFICATION_MODELS = ("monthly", "weekly", "daily")
@@ -494,7 +494,6 @@ def main():
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("Terrible_Backtest.png")
     plt.show()
 
 

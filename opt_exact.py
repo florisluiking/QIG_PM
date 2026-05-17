@@ -38,7 +38,7 @@ TEST_MONTHS = 36
 
 # Hyperparameter search config for a single frequency
 RUN_SINGLE_SCALE_HYPEROPT = True
-HYPEROPT_SCALE = "weekly"  # one of {"monthly", "weekly", "daily"}
+HYPEROPT_SCALE = "monthly"  # one of {"monthly", "weekly", "daily"}
 MODEL_OUT = f"mlp_{HYPEROPT_SCALE}_regression.joblib"
 HYPEROPT_LAGS = [50, 100, 150]      #[50, 100, 150]
 HYPEROPT_LAYER_CONFIGS = [
@@ -506,6 +506,12 @@ def main():
                         f"{r['loss_curve_last']:15.4f} "
                         f"{r['loss_final']:10.4f}"
                     )
+                df_results = pd.DataFrame(all_results_sorted)
+
+                df_results.to_csv(
+                    f"hyperopt_results_{HYPEROPT_SCALE}.csv",
+                    index=False
+                )
 
             print("\n=== Best hyperparameters for single-scale MLP regressor (by hit_rate with coverage>=0.05) ===")
             print(best_config)
@@ -524,10 +530,6 @@ def main():
         elapsed = time.time() - t0
         print(f"\n⏱️ Total runtime (with hyperopt): {elapsed / 60:.2f} minutes ({elapsed:.1f} seconds)")
         return
-    
-    # -----------------------
-    # 5) Fixed multi-scale training (runs when RUN_SINGLE_SCALE_HYPEROPT = False)
-    # -----------------------
     train_core_mask, val_mask, test_mask = split_masks(d, val_months=VAL_MONTHS, test_months=TEST_MONTHS)
 
     lags_m, lags_w, lags_d = HISTORY_LAGS_M, HISTORY_LAGS_W, HISTORY_LAGS_D
@@ -613,10 +615,9 @@ def main():
         })
 
     df_results = pd.DataFrame(results).sort_values("threshold").reset_index(drop=True)
-    df_results.to_csv("df_results_regression.csv", index=False)
+    df_results.to_csv(f"df_results_regression.csv", index=False)
 
     print("\n=== Threshold evaluation results ===")
-    print(df_results)
     elapsed = time.time() - t0
     print(f"\n⏱️ Total runtime: {elapsed / 60:.2f} minutes ({elapsed:.1f} seconds)")
 
