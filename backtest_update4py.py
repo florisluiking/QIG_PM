@@ -443,6 +443,9 @@ def main():
     sp_rets         = sp_aligned.pct_change().fillna(0).values
     sharpe_sp       = (12 * np.mean(sp_rets) - r_f) / (np.sqrt(12) * np.std(sp_rets, ddof=1))
     print(f"\nS&P 500:  Sharpe={sharpe_sp:.3f}  MaxDrawdown={np.min(sp_rets):.4f}")
+    print(f"months_clean: {months_clean[:5]}")
+    print(f"sp500 index sample: {sp500.index[:5]}")
+    print(f"sp_aligned non-null: {sp_aligned.notna().sum()} / {len(sp_aligned)}")
 
     # ── 11. Plot ───────────────────────────────────────────────────────────────
     cum5   = np.insert(np.cumprod(1 + np.array(returns_5)),   0, 1.0)
@@ -474,23 +477,7 @@ def main():
     plt.grid(True)
     plt.tight_layout()
     plt.show()
-    supervised = joblib.load("cache_simple/supervised_arrays_new4.joblib")
-    X, y, d, R, stocks = supervised
 
-    print("=== y (labels) ===")
-    print(f"Unique values: {np.unique(y)}")
-    print(f"dtype: {y.dtype}")
-    print(f"First 10: {y[:10]}")
-
-    print("\n=== R (returns) ===")
-    print(f"Unique values (first 20): {np.unique(R)[:20]}")
-    print(f"dtype: {R.dtype}")
-    print(f"First 10: {R[:10]}")
-    print(f"Min: {R.min():.6f}  Max: {R.max():.6f}  Mean: {R.mean():.6f}")
-    print(f"Are y and R identical? {np.allclose(y, R)}")
-    print(f"Are R values only 0 and 1? {set(np.unique(R)) <= {0.0, 1.0}}")
-
-    print(f"\n⏱️  Total runtime: {(time.time()-t0)/60:.2f} min")
 
 
 if __name__ == "__main__":
