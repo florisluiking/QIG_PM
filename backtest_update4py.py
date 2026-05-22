@@ -40,10 +40,10 @@ CACHE_DIR = Path("cache_simple")
 
 MODEL_LAGS = {
     "monthly":   50,
-    "weekly":   100,
-    "daily":    100,
-    "monthly_p": 50,
-    "weekly_p": 150,
+    "weekly":    150,
+    "daily":     100,
+    "monthly_p": 150,
+    "weekly_p":  100,
     "daily_p":   50,
 }
 
@@ -56,6 +56,11 @@ MODEL_FEATURE_BLOCK = {
     "daily_p":   "daily",
 }
 
+block_offsets = {
+    "monthly": 0,
+    "weekly":  150,   # starts after 150 monthly cols
+    "daily":   300,   # starts after 150 monthly + 150 weekly cols
+}
 MODEL_THRESHOLD_GRIDS = {
     "monthly":   [0.52],
     "weekly":    [0.52],
@@ -70,6 +75,7 @@ PREDICTION_MODELS     = ("monthly_p", "weekly_p", "daily_p")
 
 VAL_MONTHS  = 36
 TEST_MONTHS = 36
+
 
 # ── walk-forward knob ─────────────────────────────────────────────────────────
 VAL_WARMUP = False   # set True to partial_fit on entire val period before test
@@ -137,13 +143,18 @@ def main():
 
     # ── 1. Load models ────────────────────────────────────────────────────────
     model_paths = {
-        "monthly": BASE_DIR / "artifacts" / "monthly_classification_lags50_layers_8_4_sgd_lr00005.joblib",
-        "weekly": BASE_DIR / "artifacts" / "weekly_classification_lags100_layers8_4_sgd_lr00005.joblib",
-        "daily": BASE_DIR / "artifacts" / "daily_classification_lags100_layers_128_64_adam_lr0005.joblib",
-        "monthly_p": BASE_DIR / "artifacts" / "monthly_regression_lags50_layers8_4_sgd_lr0001.joblib",
-        "weekly_p": BASE_DIR / "artifacts" / "weekly_regression_lags150_layers8_4_lbfgs.joblib",
-        "daily_p": BASE_DIR / "artifacts" / "daily_regression_lags50_layers32_16_8_adam_lr0005.joblib",
+        "monthly": BASE_DIR / "artifacts" / "monthly_class.joblib",
+        "weekly": BASE_DIR / "artifacts" / "weekly_class.joblib",
+        "daily": BASE_DIR / "artifacts" / "daily_class.joblib",
+        "monthly_p": BASE_DIR / "artifacts" / "monthly_regression.joblib",
+        "weekly_p": BASE_DIR / "artifacts" / "weekly_regression.joblib",
+        "daily_p": BASE_DIR / "artifacts" / "daily_regression.joblib",
     }
+    for name in ["monthly_class", "weekly_class", "daily_class", 
+             "monthly_regression", "weekly_regression", "daily_regression"]:
+        bundle = joblib.load(Path("artifacts") / f"{name}.joblib")
+        print(f"{name}: scaler expects {bundle['scaler'].n_features_in_} features")
+
 
     loaded_models = {}
     for name, path in model_paths.items():
@@ -151,7 +162,7 @@ def main():
         loaded_models[name] = load_model(path)
 
     # ── 2. Load supervised cache ───────────────────────────────────────────────
-    supervised = cache_load("supervised_arrays_class")
+    supervised = cache_load("supervised_arrays_new4")
     X, y, d, R, stocks = supervised
 
     train_mask, val_mask, test_mask = split_masks(d)
@@ -163,13 +174,6 @@ def main():
         bundle["model"].best_loss_ = np.inf
         bundle["model"]._no_improvement_count = 0
 
-    # ── 3. Feature-block offsets (hardcoded to match training layout) ───────────
-    # X is 300 wide: monthly[0:50], weekly[50:200], daily[200:300]
-    block_offsets = {
-        "monthly": 0,
-        "weekly":  50,
-        "daily":   200,
-    }
 
     dates_all = pd.to_datetime(d)
     if getattr(dates_all, "tz", None) is not None:
@@ -255,20 +259,20 @@ def main():
         #   This is the core of the walk-forward update.
         #   Classification models need `classes` on every partial_fit call.
         #
-        y_month = y[month_mask]
-        for model_name, bundle in loaded_models.items():
-            block  = MODEL_FEATURE_BLOCK[model_name]
-            start  = block_offsets[block]
-            lags   = MODEL_LAGS[model_name]
-            X_sl   = X[month_mask, start:start + lags]
-            X_sc   = bundle["scaler"].transform(X_sl)
+        y_month_binary = y[month_mask]
+        R_month        = R[month_mask]
 
-            # ── partial_fit HERE ─────────────────────────────────────────────
+        for model_name, bundle in loaded_models.items():
+            block = MODEL_FEATURE_BLOCK[model_name]
+            start = block_offsets[block]
+            lags  = MODEL_LAGS[model_name]
+            X_sl  = X[month_mask, start:start + lags]
+            X_sc  = bundle["scaler"].transform(X_sl)
+
             if model_name in CLASSIFICATION_MODELS:
-                bundle["model"].partial_fit(X_sc, y_month, classes=np.array([0, 1]))
+                bundle["model"].partial_fit(X_sc, y_month_binary, classes=np.array([0, 1]))
             else:
-                bundle["model"].partial_fit(X_sc, y_month)
-            # ── end partial_fit ──────────────────────────────────────────────
+                bundle["model"].partial_fit(X_sc, R_month)   # ← use continuous R
 
         print(f"  ✅ Month {month.date() if hasattr(month,'date') else month}  "
               f"| samples: {month_mask.sum():4d}  "
@@ -392,8 +396,8 @@ def main():
         pick1   = ranked[0]
 
         def get_return(stock, month):
-            mask = (stocks_wf == stock) & (dates_test_pd == month)
-            return R_test_wf[mask][0] if np.any(mask) else 0.0
+                hits = (stocks_wf == stock) & (dates_test_pd == month)
+                return float(R_test_wf[hits].mean()) if np.any(hits) else 0.0
 
         # Top-5
         win5 = sum(
@@ -470,6 +474,21 @@ def main():
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+    supervised = joblib.load("cache_simple/supervised_arrays_new4.joblib")
+    X, y, d, R, stocks = supervised
+
+    print("=== y (labels) ===")
+    print(f"Unique values: {np.unique(y)}")
+    print(f"dtype: {y.dtype}")
+    print(f"First 10: {y[:10]}")
+
+    print("\n=== R (returns) ===")
+    print(f"Unique values (first 20): {np.unique(R)[:20]}")
+    print(f"dtype: {R.dtype}")
+    print(f"First 10: {R[:10]}")
+    print(f"Min: {R.min():.6f}  Max: {R.max():.6f}  Mean: {R.mean():.6f}")
+    print(f"Are y and R identical? {np.allclose(y, R)}")
+    print(f"Are R values only 0 and 1? {set(np.unique(R)) <= {0.0, 1.0}}")
 
     print(f"\n⏱️  Total runtime: {(time.time()-t0)/60:.2f} min")
 
