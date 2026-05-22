@@ -62,12 +62,12 @@ block_offsets = {
     "daily":   300,   # starts after 150 monthly + 150 weekly cols
 }
 MODEL_THRESHOLD_GRIDS = {
-    "monthly":   [0.52],
-    "weekly":    [0.52],
-    "daily":     [0.52],
-    "monthly_p": [-0.004],
-    "weekly_p":  [-0.004],
-    "daily_p":   [-0.004],
+    "monthly":   [0.4],
+    "weekly":    [0.4],
+    "daily":     [0.4],
+    "monthly_p": [-0.1],
+    "weekly_p":  [-0.1],
+    "daily_p":   [-0.1],
 }
 
 CLASSIFICATION_MODELS = ("monthly", "weekly", "daily")
@@ -234,15 +234,19 @@ def main():
 
     for T_idx, month in enumerate(test_months_sorted):
         month_mask = (dates_all == month) & test_mask
-
         if month_mask.sum() == 0:
             continue
 
-        # ── a) Score this month ───────────────────────────────────────────────
         month_scores = {}
         for model_name, bundle in loaded_models.items():
-            month_scores[model_name] = score_block(
-                bundle, X, month_mask, block_offsets, model_name
+            scores = score_block(bundle, X, month_mask, block_offsets, model_name)
+            month_scores[model_name] = scores
+            
+            # DEBUG — print score distribution per model per month
+            print(f"  {month.date()} | {model_name:12s} | "
+                f"mean={scores.mean():.4f}  std={scores.std():.4f}  "
+                f"min={scores.min():.4f}  max={scores.max():.4f}  "
+                f"pct_above_thr={np.mean(scores >= MODEL_THRESHOLD_GRIDS[model_name][0])*100:.1f}%"
             )
 
         # Store for later threshold sweep + ranking
