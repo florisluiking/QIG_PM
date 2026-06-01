@@ -62,9 +62,9 @@ block_offsets = {
     "daily":   300,   # starts after 150 monthly + 150 weekly cols
 }
 MODEL_THRESHOLD_GRIDS = {
-    "monthly":   [0.4],
-    "weekly":    [0.4],
-    "daily":     [0.4],
+    "monthly":   [0],
+    "weekly":    [0],
+    "daily":     [0],
     "monthly_p": [-0.1],
     "weekly_p":  [-0.1],
     "daily_p":   [-0.1],
@@ -423,7 +423,17 @@ def main():
         r1 = get_return(pick1, m)
         ret_1.append(r1)
         portfolio1.append(portfolio1[i-1] * math.exp(r1))
-
+    dates_test_pd_wf = pd.to_datetime(dates_wf)
+    ew_returns = []
+    for m in months:
+        idx = dates_test_pd_wf == m
+        if idx.sum() == 0:
+            ew_returns.append(0.0)
+            continue
+        # Average log-return of all stocks in the universe that month
+        avg_log_ret = float(R_test_wf[idx].mean())
+        # Convert to simple return to match portfolio5/10 arithmetic
+        ew_returns.append(math.exp(avg_log_ret) - 1)
     # ── 10. Metrics ───────────────────────────────────────────────────────────
     r_f = 0.0191
     for label, rets in [("5-stock", returns_5), ("10-stock", returns_10), ("1-stock", ret_1)]:
@@ -432,7 +442,11 @@ def main():
         sharpe = (E_R - r_f) / sig
         maxdd  = np.min(rets)
         print(f"\n{label}:  Sharpe={sharpe:.3f}  MaxDrawdown={maxdd:.4f}")
-
+    E_R_ew  = 12 * np.mean(ew_returns)
+    sig_ew  = np.sqrt(12) * np.std(ew_returns, ddof=1)
+    sharpe_ew = (E_R_ew - r_f) / sig_ew
+    print(f"\nEqual-weighted universe:  Sharpe={sharpe_ew:.3f}  MaxDrawdown={np.min(ew_returns):.4f}")
+    cum_ew = np.insert(np.cumprod(1 + np.array(ew_returns)), 0, 1.0)
     # S&P 500 benchmark
     ticker  = yf.Ticker("^GSPC")
     sp500   = ticker.history(start="2022-01-01", end="2025-01-01", auto_adjust=True)["Close"]
@@ -460,6 +474,7 @@ def main():
     plt.figure(figsize=(12, 6))
     plt.plot(months_clean, cum1,   label="Top 1  (retraining)")
     plt.plot(months_clean, cum5,   label="Top 5  (retraining)")
+    plt.plot(months_clean, cum_ew, label="Equal-weighted universe", linestyle="--")
     plt.plot(months_clean, cum10,  label="Top 10 (retraining)")
     plt.plot(months_clean, cum_sp, label="S&P 500")
     plt.yscale("log")

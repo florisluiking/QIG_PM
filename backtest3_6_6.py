@@ -26,12 +26,12 @@ CACHE_DIR = Path("cache_simple")
 CACHE_DIR.mkdir(exist_ok=True)
 # Per-model lag selection (can differ within same horizon)
 MODEL_LAGS = {
-    "monthly": 50,
-    "weekly": 100,
-    "daily": 100,
-    "monthly_p": 50,
-    "weekly_p": 150,
-    "daily_p": 50,
+    "monthly":   50,
+    "weekly":    150,
+    "daily":     100,
+    "monthly_p": 150,
+    "weekly_p":  100,
+    "daily_p":   50,
 }
 
 # Which horizon block each model should read from in X
@@ -121,14 +121,13 @@ def main():
 
     # Suppress the sklearn InconsistentVersionWarning globally during loading
     warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
-
     model_paths = {
-        "monthly": BASE_DIR / "artifacts" / "monthly_classification_lags50_layers_8_4_sgd_lr00005.joblib",
-        "weekly": BASE_DIR / "artifacts" / "weekly_classification_lags100_layers8_4_sgd_lr00005.joblib",
-        "daily": BASE_DIR / "artifacts" / "daily_classification_lags100_layers_128_64_adam_lr0005.joblib",
-        "monthly_p": BASE_DIR / "artifacts" / "monthly_regression_lags50_layers8_4_sgd_lr0001.joblib",
-        "weekly_p": BASE_DIR / "artifacts" / "weekly_regression_lags150_layers8_4_lbfgs.joblib",
-        "daily_p": BASE_DIR / "artifacts" / "daily_regression_lags50_layers32_16_8_adam_lr0005.joblib",
+        "monthly": BASE_DIR / "artifacts" / "monthly_class.joblib",
+        "weekly": BASE_DIR / "artifacts" / "weekly_class.joblib",
+        "daily": BASE_DIR / "artifacts" / "daily_class.joblib",
+        "monthly_p": BASE_DIR / "artifacts" / "monthly_regression.joblib",
+        "weekly_p": BASE_DIR / "artifacts" / "weekly_regression.joblib",
+        "daily_p": BASE_DIR / "artifacts" / "daily_regression.joblib",
     }
 
     loaded_models = {}
@@ -146,7 +145,7 @@ def main():
 
     # Re-enable warnings later if needed
     warnings.filterwarnings("default", category=InconsistentVersionWarning)
-    supervised = cache_load("supervised_arrays_class")
+    supervised = cache_load("supervised_arrays_new4")
     X, y, d, R, stocks = supervised 
     train_core_mask, val_mask, test_mask = split_masks(d, val_months=VAL_MONTHS, test_months=TEST_MONTHS)
     R = R[test_mask]
@@ -339,7 +338,19 @@ def main():
     print(monthly_rankings[first_month][:10])
     print(len(monthly_rankings[first_month]))
     months = sorted(monthly_rankings.keys())
-
+    ew_returns = []
+    for m in months:
+        idx = dates_test == m
+        if idx.sum() == 0:
+            ew_returns.append(0.0)
+            continue
+        R_month = R[idx]
+        R_month = R_month[R_month != 0.0]   # drop zero returns
+        if len(R_month) == 0:
+            ew_returns.append(0.0)
+            continue
+        avg_log_ret = float(R_month.mean())
+        ew_returns.append(math.exp(avg_log_ret) - 1)
 
     # Optional: print all 72 lists
     #for m, tickers in zip(months, top_10_per_month):
@@ -426,6 +437,9 @@ def main():
     max_draw = np.min(ret_1)
     print(f"sharpe 1 stock: {s}")
     print(f"Max drawdown 1 stock: {max_draw}")
+    sh_ew = (12*np.mean(ew_returns) - 0.0191) / (np.sqrt(12)*np.std(ew_returns, ddof=1))
+    print(f"sharpe equal-weighted universe: {sh_ew:.3f}")
+    print(f"Max drawdown equal-weighted universe: {np.min(ew_returns):.4f}")
     plt.hist(through_mask_n, bins =100)
     plt.show()
     plt.plot(through_mask_n)
@@ -446,7 +460,7 @@ def main():
 
     sp500 = ticker.history(
         start="2018-01-01",
-        end="2025-01-01",
+        end="2025-06-01",
         auto_adjust=True
     )
     sp500.index = sp500.index.tz_localize(None)
@@ -481,10 +495,12 @@ def main():
     cum_portfolio_1 = np.insert(cum_portfolio_1, 0, 1.0)
 
     cum_sp500 = np.cumprod(1 + sp500_returns)
+    cum_ew = np.insert(np.cumprod(1 + np.array(ew_returns)), 0, 1.0)
     plt.figure(figsize=(12,6))
     plt.plot(months_clean, cum_portfolio_1, label="Top 1 pick")
     plt.plot(months_clean, cum_portfolio, label="Top 5 picks")
     plt.plot(months_clean, cum_portfolio_10, label="Top 10 picks")
+    plt.plot(months_clean, cum_ew, label="Equal-weighted universe", linestyle="--")
     plt.plot(months_clean, cum_sp500, label="S&P 500")
     plt.xticks(rotation=45)
     plt.title("Cumulative Returns: Strategy vs S&P 500")
@@ -494,6 +510,7 @@ def main():
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
+    plt.savefig("BTnoretrain.png")
     plt.show()
 
 
